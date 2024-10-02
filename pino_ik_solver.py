@@ -59,12 +59,14 @@ class PinoIkSolver:
         chain_qid = [self.model.joints[i].idx_q for i in chain_jid]
         return chain_jid, chain_qid
 
-    def get_tcp(self, q: np.array, tcp_name: tuple):
+    def get_tcp(self, q: np.array, base_link: tuple, tcp_name: tuple):
         pinocchio.forwardKinematics(self.model, self.data, q)
         pinocchio.updateFramePlacements(self.model, self.data)
-        tcp_id = self.model.getFrameId(*tcp_name)
-        tcp_pose = self.data.oMf[tcp_id]
-        return tcp_pose.translation, R.from_matrix(tcp_pose.rotation).as_quat()
+        # uni<-base
+        base_pose = self.data.oMf[self.model.getFrameId(*base_link)]
+        tcp_pose = self.data.oMf[self.model.getFrameId(*tcp_name)]
+        base4tcp = base_pose.actInv(tcp_pose)
+        return base4tcp.translation, R.from_matrix(base4tcp.rotation).as_quat()
 
     def solve_ik(
         self,
@@ -91,7 +93,6 @@ class PinoIkSolver:
         first_err = np.zeros(6)
         i = 0
         while True:
-            print(f'q: {q}')
             pinocchio.forwardKinematics(self.model, self.data, q)
             pinocchio.updateFramePlacements(self.model, self.data)
             # `4` means `from`
@@ -127,4 +128,4 @@ class PinoIkSolver:
             q = pinocchio.integrate(self.model, q, v * self.dt)
             i += 1
 
-        return q.flatten().tolist(), success, err, err / (first_err + self.damp)
+        return q.flatten(), success, err, err / (first_err + self.damp)
